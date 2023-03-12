@@ -3,7 +3,6 @@ package com.octo4a
 import com.google.gson.FieldNamingPolicy
 import com.octo4a.camera.CameraEnumerationRepository
 import com.octo4a.repository.*
-import com.octo4a.serial.VirtualSerialDriver
 import com.octo4a.utils.TLSSocketFactory
 import com.octo4a.utils.preferences.MainPreferences
 import com.octo4a.viewmodel.InstallationViewModel
@@ -39,13 +38,13 @@ val appModule = module {
     factory<BootstrapRepository> { BootstrapRepositoryImpl(get(), get(), androidContext()) }
 
     single<FIFOEventRepository> { FIFOEventRepositoryImpl(get()) }
-    single<VirtualSerialDriver> { VirtualSerialDriver(androidContext(), get(), get(), get()) }
+    single<UsbSerialDeviceRepository> { UsbSerialDeviceRepositoryImpl(androidContext(), get(), get()) }
     single<ExtensionsRepository> { ExtensionsRepositoryImpl(androidContext(), get(), get(), get()) }
     single<LoggerRepository> { LoggerRepositoryImpl() }
     single<OctoPrintHandlerRepository> { OctoPrintHandlerRepositoryImpl(androidContext(), get(), get(), get(), get(), get(), get()) }
     single { CameraEnumerationRepository(androidApplication()) }
 
     viewModel { InstallationViewModel(get()) }
-    viewModel { StatusViewModel(androidApplication(), get(), get()) }
+    viewModel { StatusViewModel(androidApplication(), get(), get(), get()) }
     viewModel { NetworkStatusViewModel(androidApplication(), get()) }
 }

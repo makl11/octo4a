@@ -21,9 +21,6 @@ import com.octo4a.R
 import com.octo4a.camera.CameraService
 import com.octo4a.camera.LegacyCameraService
 import com.octo4a.repository.LoggerRepository
-import com.octo4a.serial.VirtualSerialDriver
-import com.octo4a.serial.id
-import com.octo4a.service.OctoPrintService
 import com.octo4a.ui.fragments.TerminalSheetDialog
 import com.octo4a.utils.preferences.MainPreferences
 import com.octo4a.utils.isServiceRunning
@@ -32,7 +29,6 @@ import org.koin.android.ext.android.inject
 
 class MainActivity : AppCompatActivity() {
     private val logger: LoggerRepository by inject()
-    private val vsp: VirtualSerialDriver by inject()
     private val mainPreferences: MainPreferences by inject()
     private val pm  by lazy { getSystemService(LifecycleService.POWER_SERVICE) as PowerManager }
     private val prefs: MainPreferences by inject()
@@ -42,7 +38,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         setSupportActionBar(my_toolbar)
         bottomNavigationBar.setupWithNavController(findNavController(R.id.navHost))
-        vsp.updateDevicesList(OctoPrintService.BROADCAST_SERVICE_USB_GOT_ACCESS)
 
         // Required for acquiring wakelock
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !pm.isIgnoringBatteryOptimizations(packageName) && mainPreferences.warnDisableBatteryOptimization) {
@@ -111,10 +106,11 @@ class MainActivity : AppCompatActivity() {
     // @TODO: refactor to non deprecated api
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == VirtualSerialDriver.usbPermissionRequestCode) {
-            vsp.updateDevicesList(OctoPrintService.BROADCAST_SERVICE_USB_GOT_ACCESS)
-            vsp.connectedDevices.value.firstOrNull { it.id() == data.toString() }
-        }
+        print("GOT ACTIVITY RESULT $requestCode, $resultCode, $data")
+//        if (requestCode == VirtualSerialDriver.usbPermissionRequestCode) {
+//            vsp.updateDevicesList(OctoPrintService.BROADCAST_SERVICE_USB_GOT_ACCESS)
+//            vsp.connectedDevices.value.firstOrNull { it.id() == data.toString() }
+//        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {

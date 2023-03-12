@@ -2,12 +2,12 @@ package com.octo4a.viewmodel
 
 import android.app.Application
 import android.content.pm.PackageInfo
-import android.content.pm.PackageManager
 import androidx.lifecycle.*
 import com.octo4a.Octo4aApplication
 import com.octo4a.repository.GithubRelease
 import com.octo4a.repository.GithubRepository
 import com.octo4a.repository.OctoPrintHandlerRepository
+import com.octo4a.repository.UsbSerialDeviceRepository
 import com.octo4a.utils.SemVer
 import com.octo4a.utils.ipAddress
 import com.octo4a.utils.withIO
@@ -15,13 +15,16 @@ import kotlinx.coroutines.launch
 import java.lang.Exception
 
 
-class StatusViewModel(context: Application,
-                      private val octoPrintHandlerRepository: OctoPrintHandlerRepository,
-                      private val githubRepository: GithubRepository) : AndroidViewModel(context) {
+class StatusViewModel(
+    context: Application,
+    private val octoPrintHandlerRepository: OctoPrintHandlerRepository,
+    private val githubRepository: GithubRepository,
+    private val usbSerialDeviceRepository: UsbSerialDeviceRepository,
+) : AndroidViewModel(context) {
     val serverStatus = octoPrintHandlerRepository.serverState.asLiveData()
-    val usbStatus = octoPrintHandlerRepository.usbDeviceStatus.asLiveData()
     val cameraStatus = octoPrintHandlerRepository.cameraServerStatus.asLiveData()
     val updateAvailable = MutableLiveData<GithubRelease>()
+    val usbSerialDevices = usbSerialDeviceRepository.usbSerialDevices.asLiveData()
 
     fun startServer() {
         octoPrintHandlerRepository.startOctoPrint()

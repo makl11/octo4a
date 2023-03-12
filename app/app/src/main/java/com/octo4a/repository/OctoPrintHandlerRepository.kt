@@ -2,7 +2,9 @@ package com.octo4a.repository
 
 import android.content.Context
 import android.os.Environment
-import com.octo4a.serial.VSPPty
+import android.system.ErrnoException
+import android.system.OsConstants.S_IRWXO
+import android.system.OsConstants.S_IRWXU
 import com.octo4a.utils.*
 import com.octo4a.utils.preferences.MainPreferences
 import kotlinx.coroutines.Dispatchers
@@ -39,8 +41,6 @@ enum class ExtrasStatus {
     Installed
 }
 
-data class UsbDeviceStatus(val isAttached: Boolean, val port: String = "")
-
 fun ServerStatus.getInstallationProgress(): Int {
     return max(((value.toDouble() / 4) * 100).roundToInt(), 0)
 }
@@ -53,7 +53,6 @@ interface OctoPrintHandlerRepository {
     val serverState: StateFlow<ServerStatus>
     val installErrorDescription: StateFlow<String>
     val octoPrintVersion: StateFlow<String>
-    val usbDeviceStatus: StateFlow<UsbDeviceStatus>
     val registeredExtensions: StateFlow<List<RegisteredExtension>>
     val cameraServerStatus: StateFlow<Boolean>
     val extrasStatus: StateFlow<ExtrasStatus>
@@ -64,9 +63,7 @@ interface OctoPrintHandlerRepository {
     fun startSSH()
     fun stopSSH()
     fun installExtras()
-    fun usbAttached(port: String)
     fun getExtrasStatus()
-    fun usbDetached()
     fun resetSSHPassword(password: String)
     fun getConfigValue(value: String): String
     var isCameraServerRunning: Boolean
@@ -93,14 +90,12 @@ class OctoPrintHandlerRepositoryImpl(
     private val commPyFixFile by lazy {
         File("$octoPrintStoragePath/plugins/comm-fix.py")
     }
-    private val vspPty by lazy { VSPPty() }
     private val yaml by lazy { Yaml() }
 
     private var _serverState = MutableStateFlow(ServerStatus.InstallingBootstrap)
     private var _installErrorDescription = MutableStateFlow("")
     private var _extensionsState = MutableStateFlow(listOf<RegisteredExtension>())
     private var _octoPrintVersion = MutableStateFlow("...")
-    private var _usbDeviceStatus = MutableStateFlow(UsbDeviceStatus(false))
     private var _cameraServerStatus = MutableStateFlow(false)
     private var _extrasStatus = MutableStateFlow(ExtrasStatus.NotInstalled)
     private var wakeLock = Octo4aWakeLock(context, logger)
@@ -112,7 +107,6 @@ class OctoPrintHandlerRepositoryImpl(
     override val installErrorDescription: StateFlow<String> = _installErrorDescription
     override val registeredExtensions: StateFlow<List<RegisteredExtension>> = _extensionsState
     override val octoPrintVersion: StateFlow<String> = _octoPrintVersion
-    override val usbDeviceStatus: StateFlow<UsbDeviceStatus> = _usbDeviceStatus
     override val cameraServerStatus: StateFlow<Boolean> = _cameraServerStatus
     override val extrasStatus: StateFlow<ExtrasStatus> = _extrasStatus
 
@@ -168,9 +162,6 @@ class OctoPrintHandlerRepositoryImpl(
                     }
                     _serverState.emit(ServerStatus.BootingUp)
                     insertInitialConfig()
-                    vspPty.cancelPtyThread()
-                    Thread.sleep(10)
-                    vspPty.runPtyThread()
                     startOctoPrint()
                     logger.log { "Dependencies installed" }
                 } else {
@@ -267,8 +258,17 @@ class OctoPrintHandlerRepositoryImpl(
         if (octoPrintProcess != null && octoPrintProcess!!.isRunning()) {
             logger.log { "Failed to start. OctoPrint already running." }
         }
+        // TODO: Maybe move into c code for backwards compat
         bootstrapRepository.run {
-            vspPty.createEventPipe()
+            try {
+                android.system.Os.mkfifo(
+                    "/data/data/com.octo4a/files/bootstrap/bootstrap/eventPipe",
+                    S_IRWXO or S_IRWXU
+                )
+            } catch (e: ErrnoException) {
+                // Ignore error when eventPipe already exists
+                if (e.errno != 17) throw e
+            }
         }
         if (!bootstrapRepository.isArgonFixApplied) {
             logger.log { "Applying argon fix..." }
@@ -361,30 +361,39 @@ class OctoPrintHandlerRepositoryImpl(
 
     }
 
-    override fun usbAttached(port: String) {
-        _usbDeviceStatus.value = UsbDeviceStatus(true, port)
-    }
-
-    override fun usbDetached() {
-        _usbDeviceStatus.value = UsbDeviceStatus(false)
-    }
-
     private fun insertInitialConfig() {
         bootstrapRepository.ensureHomeDirectory()
         val map = getConfig()
         map["webcam"] = mapOf(
             "stream" to "http://${context.ipAddress}:5001/mjpeg",
             "ffmpeg" to "/usr/bin/ffmpeg",
-            "snapshot" to "http://localhost:5001/snapshot"
+            "snapshot" to "http://${context.ipAddress}:5001/snapshot"
         )
         map["serial"] = mapOf(
             "exclusive" to false,
-            "additionalPorts" to listOf("/dev/ttyOcto4a")
+            "additionalPorts" to listOf("/dev/ttyOcto4a/*")
         )
         map["server"] = mapOf(
             "commands" to mapOf(
                 "serverRestartCommand" to "echo \"{\\\"eventType\\\": \\\"restartServer\\\"}\" > /eventPipe",
                 "systemShutdownCommand" to "echo \"{\\\"eventType\\\": \\\"stopServer\\\"}\" > /eventPipe"
+            )
+        )
+        map["events"] = mapOf(
+            "subscriptions" to listOf(
+                mapOf(
+                    "event" to "Startup",
+                    "command" to "echo \"started\" > /run/octoprint_status",
+                    "type" to "system",
+                    "debug" to true,
+                    "enabled" to true,
+                ), mapOf(
+                    "event" to "Shutdown",
+                    "command" to "echo \"stopped\" > /run/octoprint_status",
+                    "type" to "system",
+                    "debug" to true,
+                    "enabled" to true,
+                )
             )
         )
 

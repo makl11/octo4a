@@ -76,6 +76,21 @@ abstract class Preferences(var context: Context? = null, useDefaultFile: Boolean
         }
     }
 
+    fun stringMapPref(prefKey: String? = null, defaultValue: Map<String, String> = HashMap()) = StringMapPrefDelegate(prefKey, defaultValue)
+
+    inner class StringMapPrefDelegate(prefKey: String? = null, val defaultValue: Map<String, String>) : PrefDelegate<Map<String, String>>(prefKey) {
+        override fun getValue(thisRef: Any?, property: KProperty<*>): Map<String, String> {
+            val mapString = prefs.getString(prefKey ?: property.name, defaultValue.toString()) ?: return emptyMap()
+            return mapString.removePrefix("{").removeSuffix("}").split(", ")
+                .map { it.split("=") }.filter { it.count() == 2 }
+                .associate { it[0] to it[1] }
+        }
+        override fun setValue(thisRef: Any?, property: KProperty<*>, value: Map<String, String>) {
+            prefs.edit().putString(prefKey ?: property.name, value.toString()).apply()
+            onPrefChanged(property)
+        }
+    }
+
     private fun onPrefChanged(property: KProperty<*>) {
         listeners.forEach { it.onSharedPrefChanged(property) }
     }

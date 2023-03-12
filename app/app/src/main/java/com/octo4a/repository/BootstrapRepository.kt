@@ -230,13 +230,17 @@ class BootstrapRepositoryImpl(
         if (!directory.exists()) {
             directory.mkdirs()
         }
+
+        val vspDir = File("/data/data/com.octo4a/files/vsp");
+        if (!vspDir.exists()) vspDir.mkdirs()
+
         val pb = ProcessBuilder()
         pb.redirectErrorStream(true)
         pb.environment()["HOME"] = "$FILES/bootstrap"
         pb.environment()["LANG"] = "'en_US.UTF-8'"
         pb.environment()["PWD"] = "$FILES/bootstrap"
         pb.environment()["EXTRA_BIND"] =
-            "-b ${filesPath}:/root -b /data/data/com.octo4a/files/serialpipe:/dev/ttyOcto4a -b /data/data/com.octo4a/files/bootstrap/ioctlHook.so:/home/octoprint/ioctlHook.so"
+            "-b ${filesPath}:/root -b /data/data/com.octo4a/files/vsp:/dev/ttyOcto4a -b /data/data/com.octo4a/files/bootstrap/ioctlHook.so:/home/octoprint/ioctlHook.so"
         pb.environment()["PATH"] =
             "/sbin:/system/sbin:/product/bin:/apex/com.android.runtime/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin"
         pb.directory(File("$FILES/bootstrap"))

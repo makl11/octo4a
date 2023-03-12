@@ -17,6 +17,7 @@ val cdcDevices = listOf(
     UsbDeviceId(11417, 2),
 
     // Bunch of Arduinos
+    UsbDeviceId(9025, 1),
     UsbDeviceId(9025, 16),
     UsbDeviceId(9025, 54),
     UsbDeviceId(9025, 61),

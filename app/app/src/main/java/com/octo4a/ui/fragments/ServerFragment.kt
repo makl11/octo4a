@@ -1,6 +1,5 @@
 package com.octo4a.ui.fragments
 
-import android.app.Activity
 import android.app.ActivityManager
 import android.app.AlertDialog
 import android.content.ComponentName
@@ -20,21 +19,17 @@ import android.widget.Toast
 import androidx.camera.view.PreviewView
 import androidx.core.view.isGone
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.asLiveData
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.octo4a.Octo4aApplication
 import com.octo4a.R
 import com.octo4a.camera.CameraService
 import com.octo4a.repository.GithubRelease
 import com.octo4a.repository.LoggerRepository
 import com.octo4a.repository.ServerStatus
-import com.octo4a.serial.VirtualSerialDriver
+import com.octo4a.repository.UsbSerialDeviceRepository
 import com.octo4a.ui.InitialActivity
 import com.octo4a.ui.WebinterfaceActivity
-import com.octo4a.ui.showBugReportingDialog
 import com.octo4a.ui.views.UsbDeviceView
 import com.octo4a.utils.preferences.MainPreferences
-import com.octo4a.viewmodel.IPAddress
 import com.octo4a.viewmodel.IPAddressType
 import com.octo4a.viewmodel.NetworkStatusViewModel
 import com.octo4a.viewmodel.StatusViewModel
@@ -49,7 +44,7 @@ class ServerFragment : Fragment() {
     private val networkStatusViewModel: NetworkStatusViewModel by sharedViewModel()
     private lateinit var cameraService: CameraService
     private var boundToCameraService = false
-    private val vspDriver: VirtualSerialDriver by inject()
+    private val usbSerialDeviceRepository: UsbSerialDeviceRepository by inject()
     private val mainPreferences: MainPreferences by inject()
     private val logger: LoggerRepository by inject()
 
@@ -94,22 +89,12 @@ class ServerFragment : Fragment() {
             showUpdateDialog(it)
         }
 
-        vspDriver.connectedDevices.asLiveData().observe(viewLifecycleOwner) { devices ->
+        statusViewModel.usbSerialDevices.observe(viewLifecycleOwner) { devices ->
             usbDevicesList.removeAllViews()
-            devices.forEach {
-                val usbDeviceView = UsbDeviceView(requireContext(), vspDriver)
+            devices.values.forEach {
+                val usbDeviceView = UsbDeviceView(requireContext(), usbSerialDeviceRepository)
                 usbDevicesList.addView(usbDeviceView)
                 usbDeviceView.setUsbDevice(it)
-            }
-        }
-
-        statusViewModel.usbStatus.observe(viewLifecycleOwner) {
-            if (it.isAttached) {
-                connectionStatus.title = getString(R.string.connection_connected)
-                connectionStatus.subtitle = it.port
-            } else {
-                connectionStatus.title = getString(R.string.connection_not_connected)
-                connectionStatus.subtitle = getString(R.string.connection_otg_cable)
             }
         }
 

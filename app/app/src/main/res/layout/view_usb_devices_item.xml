@@ -16,7 +16,6 @@
             android:paddingTop="12dp"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="@id/iconCircle"
-            app:layout_constraintEnd_toStartOf="@id/selectCheckbox"
             android:ellipsize="end"
             android:maxLines="1"
             android:textStyle="bold"
@@ -46,15 +45,6 @@
             android:textColor="@color/primaryTextColor"
             android:textSize="14sp"
     />
-
-    <CheckBox
-        android:id="@+id/selectCheckbox"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        />
 
     <View style="@style/Divider"
           app:layout_constraintTop_toBottomOf="@id/serialDriverText"
