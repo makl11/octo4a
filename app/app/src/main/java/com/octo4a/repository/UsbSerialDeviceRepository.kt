@@ -58,7 +58,7 @@ class UsbSerialDeviceRepositoryImpl(
 
     override fun tryToConnectDevice(device: UsbSerialDevice) {
         if (device.connected) return
-        if (!device.hasPermission) return requestPermission(device)
+        if (!usbManager.hasPermission(device.usbDevice)) return requestPermission(device)
         else if (device.driverClass == SerialDriverClass.UNKNOWN) {
             Toast.makeText(
                 context, context.getString(R.string.no_driver_selected), Toast.LENGTH_LONG
@@ -108,9 +108,9 @@ class UsbSerialDeviceRepositoryImpl(
         val intent = Intent(context, this::class.java)
         intent.action = BROADCAST_USB_SERIAL_DEVICE_GOT_ACCESS
         intent.putExtra("deviceName", device.usbDevice.deviceName)
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-        else PendingIntent.FLAG_ONE_SHOT
+        val flags =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            else PendingIntent.FLAG_ONE_SHOT
 
         val pendingIntent = PendingIntent.getBroadcast(context, device.hexId, intent, flags)
         usbManager.requestPermission(device.usbDevice, pendingIntent)

@@ -2,32 +2,33 @@ package com.octo4a.serial
 
 import android.content.Context
 import android.hardware.usb.UsbDevice
-import android.hardware.usb.UsbManager
 import android.os.Build
 import androidx.annotation.Keep
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
-import com.hoho.android.usbserial.util.SerialInputOutputManager
 import com.octo4a.repository.LoggerRepository
 import com.octo4a.utils.preferences.MainPreferences
-import java.util.concurrent.Executors
-
 
 class UsbSerialDevice(
-    private val context: Context,
-    private val logger: LoggerRepository,
+    context: Context,
+    logger: LoggerRepository,
     private val mainPreferences: MainPreferences,
     val usbDevice: UsbDevice,
-) : SerialInputOutputManager.Listener {
+) {
     init {
         System.loadLibrary("vsp-pty")
     }
 
-    private external fun writeData(data: ByteArray)
-    private external fun getBaudrate(data: Int): Int
+    external fun init()
+    external fun writeData(data: ByteArray)
+    external fun getBaudrate(data: Int): Int
     external fun runPtyThread()
     external fun cancelPtyThread()
+
+    init {
+        this.init()
+    }
 
     val vendorId = usbDevice.vendorId
 
@@ -41,7 +42,7 @@ class UsbSerialDevice(
             ?: usbDevice.deviceName
         else usbDevice.deviceName
 
-    private var currentBaudrate: Int = -1
+    var currentBaudrate: Int = -1
 
     var connected = false
 
@@ -53,16 +54,10 @@ class UsbSerialDevice(
                 else mainPreferences.autoConnectDevices.minus(id)
         }
 
-    private lateinit var serialInputManager: SerialInputOutputManager
-
-    private val usbManager by lazy {
-        context.getSystemService(Context.USB_SERVICE) as UsbManager
-    }
-
     private val defaultDriver: UsbSerialDriver? =
         UsbSerialProber(getCustomPrinterProber()).probeDevice(usbDevice)
 
-    private var driver: UsbSerialDriver? = defaultDriver
+    var driver: UsbSerialDriver? = defaultDriver
         set(value) {
             field = value
             if (value is UsbSerialDriver) port = value.ports.first()
@@ -92,58 +87,9 @@ class UsbSerialDevice(
                 }
         }
 
-    private var port: UsbSerialPort? = driver?.ports?.first()
-
-    val hasPermission get() = usbManager.hasPermission(usbDevice)
+    var port: UsbSerialPort? = driver?.ports?.first()
 
     @Keep
-    fun onDataReceived(data: SerialData?) {
-        try {
-            data?.apply {
-                val newConnectionRequired =
-                    ((isStartPacket || currentBaudrate != baudrate) && driver != null)
-                if (newConnectionRequired || port?.isOpen != true) {
-                    if (port?.isOpen == true) port?.close()
-                    val connection = usbManager.openDevice(driver!!.device)
-                    port = driver!!.ports.first()
-
-                    port?.open(connection)
-                    // @TODO get it from flags
-                    port?.setParameters(
-                        getBaudrate(baudrate),
-                        UsbSerialPort.DATABITS_8,
-                        UsbSerialPort.STOPBITS_1,
-                        UsbSerialPort.PARITY_NONE
-                    )
-                    currentBaudrate = baudrate
-
-                    if (newConnectionRequired) {
-                        port?.dtr = true
-                        port?.rts = true
-                    }
-
-                    serialInputManager = SerialInputOutputManager(port, this@UsbSerialDevice)
-                    Executors.newSingleThreadExecutor().submit(serialInputManager)
-                }
-
-                if (data.data.size > 1) {
-                    try {
-                        port?.write(data.serialData, 2_000 /*ms*/)
-                    } catch (e: Exception) {
-                        port?.close()
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            logger.log(this) { "Exception during write ${e.message}" }
-        }
-    }
-
-    override fun onNewData(data: ByteArray) {
-        writeData(data)
-    }
-
-    override fun onRunError(e: Exception?) { /* ¯\_(ツ)_/¯ */
-        TODO("What happened here?")
-    }
+    private val usbSerialIOListener: UsbSerialIOListener =
+        UsbSerialIOListener(context, logger, this)
 }

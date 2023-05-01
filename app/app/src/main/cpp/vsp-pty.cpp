@@ -22,12 +22,18 @@
 
 #define BUFSIZE 512
 #define SERIALPIPE_PATH "/data/data/com.octo4a/files/vsp/"
-timeval SELECT_TIMEOUT = {1};
+timeval SELECT_TIMEOUT = {0, 500000};
 
 bool INITIALIZED = false;
 static JavaVM *jvm = nullptr;
-jclass serialDataClass;
-jmethodID serialDataConstructor;
+jclass SerialData;
+jmethodID SerialData_Constructor;
+jclass UsbSerialDevice;
+jfieldID UsbSerialDevice_SerialIOListenerField;
+jfieldID UsbSerialDevice_HexIdField;
+jclass SerialIOListener;
+jmethodID SerialIOListener_OnReceive;
+
 
 static jint getBaudrate(speed_t baudrate) {
     switch (baudrate) {
@@ -114,9 +120,7 @@ public:
 };
 
 device_id_t getDeviceId(JNIEnv *env, jobject instance) {
-    jclass clazz = env->GetObjectClass(instance);
-    jfieldID id_field_id = env->GetFieldID(clazz, "hexId", "I");
-    return env->GetIntField(instance, id_field_id);
+    return env->GetIntField(instance, UsbSerialDevice_HexIdField);
 }
 
 std::map<device_id_t, Connection *> cons;
@@ -128,17 +132,6 @@ void removeLeftoverSerialPipes() {
              if (result) perror(fpath);
              return result;
          }, 64, FTW_DEPTH | FTW_PHYS);
-}
-
-void init(JNIEnv *env) {
-    env->GetJavaVM(&jvm);
-    serialDataClass = (jclass) env->NewGlobalRef(env->FindClass("com/octo4a/serial/SerialData"));
-    serialDataConstructor = env->GetMethodID(serialDataClass, "<init>", "([BIIIII)V");
-
-    removeLeftoverSerialPipes();
-    mkdir(SERIALPIPE_PATH, 0777);
-
-    INITIALIZED = true;
 }
 
 void passReceivedData(unsigned char *val, jint dataSize, speed_t baudrate, jobject instance,
@@ -171,15 +164,14 @@ void passReceivedData(unsigned char *val, jint dataSize, speed_t baudrate, jobje
 
     jbyteArray serialDataArr = gEnv->NewByteArray(dataSize);
     gEnv->SetByteArrayRegion(serialDataArr, 0, dataSize, (jbyte *) val);
-    jobject object = gEnv->NewObject(serialDataClass, serialDataConstructor, serialDataArr,
-                                     (int) baudrate, (int) cIflag, (int) cOflag, (int) cCflag,
-                                     (int) CLflag);
+    jobject serialDataObj = gEnv->NewObject(SerialData, SerialData_Constructor, serialDataArr,
+                                            (int) baudrate, (int) cIflag, (int) cOflag,
+                                            (int) cCflag, (int) CLflag);
 
-    jclass clazz = gEnv->GetObjectClass(instance);
-    jmethodID stringCallback = gEnv->GetMethodID(clazz, "onDataReceived",
-                                                 "(Lcom/octo4a/serial/SerialData;)V");
-    gEnv->CallVoidMethod(instance, stringCallback, object);
-    gEnv->DeleteLocalRef(object);
+    jobject serialIOListener = gEnv->GetObjectField(instance,
+                                                    UsbSerialDevice_SerialIOListenerField);
+    gEnv->CallVoidMethod(serialIOListener, SerialIOListener_OnReceive, serialDataObj);
+    gEnv->DeleteLocalRef(serialDataObj);
 
     if (gEnv->ExceptionCheck())
         gEnv->ExceptionDescribe();
@@ -201,7 +193,7 @@ static void ptyThread(const device_id_t *device_id) {
 
     unlink(con->pipe_path.c_str());
     symlink(name, con->pipe_path.c_str());
-    __android_log_print(ANDROID_LOG_VERBOSE, tag, "SYMLIKED AT %s", con->pipe_path.c_str());
+    __android_log_print(ANDROID_LOG_VERBOSE, tag, "SYMLINKED AT %s", con->pipe_path.c_str());
 
     // Prepare fds
     fd_set rfds, xfds;
@@ -282,6 +274,32 @@ static void ptyThread(const device_id_t *device_id) {
 
 extern "C" {
 JNIEXPORT void JNICALL
+Java_com_octo4a_serial_UsbSerialDevice_init(JNIEnv *env, __attribute__((unused)) jobject instance) {
+    if (INITIALIZED) return;
+    env->GetJavaVM(&jvm);
+    SerialData = (jclass) env->NewGlobalRef(env->FindClass("com/octo4a/serial/SerialData"));
+    SerialData_Constructor = env->GetMethodID(SerialData, "<init>", "([BIIIII)V");
+
+    SerialIOListener = (jclass) env->NewGlobalRef(
+            env->FindClass("com/octo4a/serial/UsbSerialIOListener"));
+    SerialIOListener_OnReceive = env->GetMethodID(SerialIOListener, "onDataReceived",
+                                                  "(Lcom/octo4a/serial/SerialData;)V");
+
+    UsbSerialDevice = (jclass) env->NewGlobalRef(
+            env->FindClass("com/octo4a/serial/UsbSerialDevice"));
+
+    UsbSerialDevice_SerialIOListenerField = env->GetFieldID(UsbSerialDevice, "usbSerialIOListener",
+                                                            "Lcom/octo4a/serial/UsbSerialIOListener;");
+
+    UsbSerialDevice_HexIdField = env->GetFieldID(UsbSerialDevice, "hexId", "I");
+
+    removeLeftoverSerialPipes();
+    mkdir(SERIALPIPE_PATH, 0777);
+
+    INITIALIZED = true;
+}
+
+JNIEXPORT void JNICALL
 Java_com_octo4a_serial_UsbSerialDevice_writeData(JNIEnv *env, jobject instance, jbyteArray data) {
     auto device_id = getDeviceId(env, instance);
     auto con = cons[device_id];
@@ -291,16 +309,14 @@ Java_com_octo4a_serial_UsbSerialDevice_writeData(JNIEnv *env, jobject instance, 
 }
 
 JNIEXPORT jint JNICALL
-Java_com_octo4a_serial_UsbSerialDevice_getBaudrate(JNIEnv *env, jobject obj, jint data) {
-    (void) env;
-    (void) obj;
-
+Java_com_octo4a_serial_UsbSerialDevice_getBaudrate(__attribute__((unused)) JNIEnv *env,
+                                                   __attribute__((unused)) jobject obj, jint data) {
     return getBaudrate(data);
 }
 
 JNIEXPORT void JNICALL
 Java_com_octo4a_serial_UsbSerialDevice_runPtyThread(JNIEnv *env, jobject instance) {
-    if (!INITIALIZED) init(env);
+    if (!INITIALIZED) Java_com_octo4a_serial_UsbSerialDevice_init(env, instance);
 
     device_id_t device_id = getDeviceId(env, instance);
 
